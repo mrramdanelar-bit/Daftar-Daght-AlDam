@@ -9,10 +9,19 @@ import android.database.sqlite.*;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.pdf.PdfDocument;
+import android.graphics.Canvas;
+import android.net.Uri;
 import android.view.*;
 import android.widget.*;
 import android.text.InputType;
+import android.text.StaticLayout;
+import android.text.TextPaint;
+import android.text.Layout;
+import android.text.TextDirectionHeuristics;
 
+import java.io.OutputStream;
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -243,6 +252,10 @@ public class MainActivity extends Activity {
         Button back = button("← العودة إلى المستخدمين",false);
         root.addView(back);
         back.setOnClickListener(v -> showUsers());
+
+        Button pdf = button("📄 تصدير تقرير PDF",true);
+        root.addView(pdf);
+        pdf.setOnClickListener(v -> exportPdf());
 
         LinearLayout form = card();
 
@@ -555,6 +568,198 @@ public class MainActivity extends Activity {
             }).show();
     }
 
+    // تصدير تقرير PDF لكل مستخدم
+
+    static final int PDF_REQUEST = 7412;
+    String pendingPdfText = "";
+
+    void exportPdf() {
+        Cursor c = db.getReadableDatabase().rawQuery(
+            "SELECT created,sys1,dia1,sys2,dia2,pulse,period,note " +
+            "FROM readings WHERE user_id=? ORDER BY id DESC",
+            new String[]{String.valueOf(activeUserId)}
+        );
+
+        if (!c.moveToFirst()) {
+            c.close();
+            toast("لا توجد قياسات لتصديرها");
+            return;
+        }
+
+        int count = 0;
+        double sumSys = 0, sumDia = 0, sumPulse = 0;
+        int pulseCount = 0;
+        StringBuilder report = new StringBuilder();
+
+        report.append("دفتر ضغط الدم\n");
+        report.append("تقرير قياسات المستخدم: ").append(activeUserName).append("\n");
+        report.append("تاريخ إنشاء التقرير: ")
+              .append(new SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.getDefault())
+              .format(new Date())).append("\n");
+        report.append("========================================\n\n");
+
+        do {
+            String date = c.getString(0);
+            int s1 = c.getInt(1);
+            int d1 = c.getInt(2);
+            Integer s2 = c.isNull(3) ? null : c.getInt(3);
+            Integer d2 = c.isNull(4) ? null : c.getInt(4);
+            Integer pulse = c.isNull(5) ? null : c.getInt(5);
+            String period = c.isNull(6) ? "" : c.getString(6);
+            String note = c.isNull(7) ? "" : c.getString(7);
+
+            double avgS = s2 == null ? s1 : (s1 + s2) / 2.0;
+            double avgD = d2 == null ? d1 : (d1 + d2) / 2.0;
+            sumSys += avgS;
+            sumDia += avgD;
+            count++;
+
+            report.append("القياس رقم ").append(count).append("\n");
+            report.append("التاريخ والوقت: ").append(date).append("\n");
+            report.append("الفترة: ").append(period).append("\n");
+            report.append("القراءة الأولى: ").append(s1).append(" / ").append(d1).append(" mmHg\n");
+
+            if (s2 != null) {
+                report.append("القراءة الثانية: ").append(s2).append(" / ").append(d2).append(" mmHg\n");
+                report.append("متوسط القراءتين: ")
+                      .append(Math.round(avgS)).append(" / ")
+                      .append(Math.round(avgD)).append(" mmHg\n");
+            }
+
+            if (pulse != null) {
+                report.append("النبض: ").append(pulse).append(" نبضة/دقيقة\n");
+                sumPulse += pulse;
+                pulseCount++;
+            } else {
+                report.append("النبض: غير مسجل\n");
+            }
+
+            if (!note.isEmpty()) {
+                report.append("ملاحظات: ").append(note).append("\n");
+            }
+
+            report.append("----------------------------------------\n\n");
+
+        } while (c.moveToNext());
+
+        c.close();
+
+        report.append("\nملخص وإحصائيات المستخدم\n");
+        report.append("عدد القياسات: ").append(count).append("\n");
+        report.append("متوسط الضغط الانقباضي: ").append(Math.round(sumSys / count)).append(" mmHg\n");
+        report.append("متوسط الضغط الانبساطي: ").append(Math.round(sumDia / count)).append(" mmHg\n");
+
+        if (pulseCount > 0) {
+            report.append("متوسط النبض: ").append(Math.round(sumPulse / pulseCount)).append(" نبضة/دقيقة\n");
+        } else {
+            report.append("متوسط النبض: لا توجد بيانات\n");
+        }
+
+        report.append("\nهذا التقرير يعرض القياسات المسجلة في التطبيق ولا يُعد تشخيصًا طبيًا.");
+
+        pendingPdfText = report.toString();
+
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/pdf");
+        intent.putExtra(Intent.EXTRA_TITLE, "تقرير ضغط الدم - " + activeUserName + ".pdf");
+
+        try {
+            startActivityForResult(intent, PDF_REQUEST);
+        } catch (Exception e) {
+            toast("تعذر فتح نافذة حفظ ملف PDF");
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode,resultCode,data);
+
+        if (requestCode == PDF_REQUEST && resultCode == RESULT_OK && data != null) {
+            Uri uri = data.getData();
+
+            if (uri == null) {
+                toast("لم يتم اختيار مكان الحفظ");
+                return;
+            }
+
+            try {
+                createPdf(uri,pendingPdfText);
+                toast("تم إنشاء تقرير PDF بنجاح");
+            } catch (Exception e) {
+                toast("تعذر إنشاء ملف PDF");
+            }
+        }
+    }
+
+    void createPdf(Uri uri,String content) throws IOException {
+        PdfDocument document = new PdfDocument();
+
+        TextPaint paint = new TextPaint();
+        paint.setColor(Color.BLACK);
+        paint.setTextSize(12);
+        paint.setAntiAlias(true);
+
+        int pageWidth = 595;
+        int pageHeight = 842;
+        int margin = 42;
+        int contentWidth = pageWidth - margin * 2;
+
+        StaticLayout layout = StaticLayout.Builder
+            .obtain(content,0,content.length(),paint,contentWidth)
+            .setAlignment(Layout.Alignment.ALIGN_OPPOSITE)
+            .setTextDirection(TextDirectionHeuristics.RTL)
+            .setLineSpacing(5,1.15f)
+            .setIncludePad(true)
+            .build();
+
+        int usableHeight = pageHeight - margin * 2;
+        int totalHeight = layout.getHeight();
+        int pages = Math.max(1,(int)Math.ceil(totalHeight / (double)usableHeight));
+
+        for (int i=0;i<pages;i++) {
+            PdfDocument.PageInfo info = new PdfDocument.PageInfo.Builder(
+                pageWidth,pageHeight,i+1
+            ).create();
+
+            PdfDocument.Page page = document.startPage(info);
+            Canvas canvas = page.getCanvas();
+
+            canvas.drawColor(Color.WHITE);
+            canvas.save();
+            canvas.clipRect(margin,margin,pageWidth-margin,pageHeight-margin);
+            canvas.translate(margin,margin - i * usableHeight);
+            layout.draw(canvas);
+            canvas.restore();
+
+            TextPaint footerPaint = new TextPaint();
+            footerPaint.setColor(Color.GRAY);
+            footerPaint.setTextSize(9);
+            footerPaint.setAntiAlias(true);
+
+            canvas.drawText("Daftar Daght AlDam - Page " + (i+1) + " / " + pages,
+                margin,pageHeight-18,footerPaint);
+
+            document.finishPage(page);
+        }
+
+        OutputStream out = null;
+
+        try {
+            out = getContentResolver().openOutputStream(uri);
+
+            if (out == null) {
+                throw new IOException("تعذر فتح الملف");
+            }
+
+            document.writeTo(out);
+
+        } finally {
+            if (out != null) out.close();
+            document.close();
+        }
+    }
+
     void toast(String s) {
         Toast.makeText(this,s,Toast.LENGTH_SHORT).show();
     }
@@ -577,10 +782,12 @@ public class MainActivity extends Activity {
                 new android.text.TextWatcher() {
                     public void beforeTextChanged(
                         CharSequence s,int start,int count,int after) {}
+
                     public void onTextChanged(
                         CharSequence s,int start,int before,int count) {
                         calculate();
                     }
+
                     public void afterTextChanged(
                         android.text.Editable e) {}
                 };
@@ -665,8 +872,10 @@ public class MainActivity extends Activity {
 
         void deleteUser(int id) {
             SQLiteDatabase d = getWritableDatabase();
+
             d.delete("readings","user_id=?",
                 new String[]{String.valueOf(id)});
+
             d.delete("users","id=?",
                 new String[]{String.valueOf(id)});
         }
@@ -682,6 +891,7 @@ public class MainActivity extends Activity {
 
             ContentValues v = new ContentValues();
             v.put("user_id",uid);
+
             v.put("created",new SimpleDateFormat(
                 "yyyy-MM-dd HH:mm",Locale.getDefault()
             ).format(new Date()));
