@@ -6,21 +6,34 @@ import android.os.Bundle;
 import android.content.*;
 import android.database.Cursor;
 import android.database.sqlite.*;
+import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.view.*;
 import android.widget.*;
+import android.text.InputType;
+
 import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class MainActivity extends Activity {
+
     DB db;
-    LinearLayout root, body;
+    LinearLayout root;
     int activeUserId = -1;
     String activeUserName = "";
-    int pad = 18;
+
+    final int GREEN = Color.rgb(23,107,99);
+    final int DARK_GREEN = Color.rgb(20,86,79);
+    final int BG = Color.rgb(243,247,246);
+    final int TEXT = Color.rgb(23,43,42);
+    final int MUTED = Color.rgb(100,119,115);
+    final int BORDER = Color.rgb(225,234,232);
 
     public void onCreate(Bundle b) {
         super.onCreate(b);
+        getWindow().setStatusBarColor(GREEN);
+        getWindow().setNavigationBarColor(Color.rgb(20,70,65));
         db = new DB(this);
         showUsers();
     }
@@ -29,112 +42,191 @@ public class MainActivity extends Activity {
         return (int)(v * getResources().getDisplayMetrics().density + .5f);
     }
 
-    TextView text(String s, int size, boolean bold) {
+    GradientDrawable shape(int color, int radius) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(dp(radius));
+        return d;
+    }
+
+    GradientDrawable cardShape() {
+        GradientDrawable d = shape(Color.WHITE,18);
+        d.setStroke(dp(1),BORDER);
+        return d;
+    }
+
+    TextView text(String value, int size, boolean bold) {
         TextView t = new TextView(this);
-        t.setText(s);
+        t.setText(value);
         t.setTextSize(size);
-        t.setTextColor(0xff183044);
-        if (bold) t.setTypeface(null, Typeface.BOLD);
-        t.setPadding(0, dp(6), 0, dp(6));
+        t.setTextColor(TEXT);
+        if (bold) t.setTypeface(null,Typeface.BOLD);
+        t.setPadding(0,dp(5),0,dp(5));
         return t;
     }
 
-    Button button(String s) {
+    TextView muted(String value) {
+        TextView t = text(value,13,false);
+        t.setTextColor(MUTED);
+        return t;
+    }
+
+    LinearLayout column() {
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        l.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        return l;
+    }
+
+    LinearLayout row() {
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.HORIZONTAL);
+        l.setGravity(Gravity.CENTER_VERTICAL);
+        l.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        return l;
+    }
+
+    LinearLayout card() {
+        LinearLayout l = column();
+        l.setPadding(dp(16),dp(14),dp(16),dp(14));
+        l.setBackground(cardShape());
+        LinearLayout.LayoutParams p =
+            new LinearLayout.LayoutParams(-1,-2);
+        p.setMargins(0,dp(7),0,dp(7));
+        root.addView(l,p);
+        return l;
+    }
+
+    void space(LinearLayout parent, int height) {
+        View v = new View(this);
+        parent.addView(v,new LinearLayout.LayoutParams(1,dp(height)));
+    }
+
+    Button button(String value, boolean primary) {
         Button b = new Button(this);
-        b.setText(s);
+        b.setText(value);
+        b.setTextSize(14);
+        b.setTypeface(null,Typeface.BOLD);
+        b.setAllCaps(false);
+        b.setTextColor(primary ? Color.WHITE : DARK_GREEN);
+        b.setPadding(dp(12),dp(5),dp(12),dp(5));
+        b.setBackground(shape(
+            primary ? GREEN : Color.rgb(232,241,239),12));
         return b;
     }
 
     EditText edit(String hint, int type) {
         EditText e = new EditText(this);
         e.setHint(hint);
-        e.setInputType(type);
+        e.setTextSize(15);
         e.setSingleLine(true);
-        e.setPadding(dp(12), dp(8), dp(12), dp(8));
+        e.setTextColor(TEXT);
+        e.setHintTextColor(MUTED);
+        e.setInputType(type);
+        e.setPadding(dp(12),dp(10),dp(12),dp(10));
+        e.setBackground(shape(Color.WHITE,11));
+        e.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         return e;
     }
 
     void base(String title) {
         ScrollView scroll = new ScrollView(this);
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(pad), dp(18), dp(pad), dp(24));
-        root.setBackgroundColor(0xfff4f8fb);
+        scroll.setFillViewport(true);
+
+        root = column();
+        root.setPadding(dp(12),dp(12),dp(12),dp(24));
+        root.setBackgroundColor(BG);
+
         scroll.addView(root);
         setContentView(scroll);
 
-        TextView h = text(title, 24, true);
-        h.setTextColor(0xff126782);
-        root.addView(h);
-        root.addView(text("دفتر ضغط الدم", 13, false));
+        LinearLayout header = column();
+        header.setPadding(dp(20),dp(18),dp(20),dp(18));
+        header.setBackground(shape(GREEN,20));
+        root.addView(header);
 
-        View line = new View(this);
-        line.setBackgroundColor(0xffd8e4eb);
-        root.addView(line, new LinearLayout.LayoutParams(-1, dp(1)));
+        TextView h = text("دفتر ضغط الدم",25,true);
+        h.setTextColor(Color.WHITE);
+        header.addView(h);
+
+        TextView sub = text(title,15,false);
+        sub.setTextColor(Color.rgb(225,243,239));
+        header.addView(sub);
+
+        space(root,10);
     }
 
     void showUsers() {
         activeUserId = -1;
-        base("المستخدمون");
+        base("متابعة قياساتك المنزلية");
 
-        root.addView(text("اختر اسم الشخص لفتح سجله الخاص، أو أضف مستخدمًا جديدًا.", 16, false));
+        LinearLayout c = card();
+        c.addView(text("مرحبًا بك 👋",20,true));
+        c.addView(muted(
+            "اختر الشخص لفتح سجله الخاص، أو أضف مستخدمًا جديدًا."
+        ));
 
-        Button add = button("＋ إضافة مستخدم جديد");
-        root.addView(add);
+        Button add = button("＋ إضافة مستخدم جديد",true);
+        c.addView(add);
         add.setOnClickListener(v -> addUserDialog());
 
-        Cursor c = db.getReadableDatabase().rawQuery(
-            "SELECT id,name FROM users ORDER BY name COLLATE NOCASE", null);
+        root.addView(text("المستخدمون",19,true));
 
-        if (c.getCount() == 0)
-            root.addView(text("لا يوجد مستخدمون بعد. ابدأ بإضافة اسم.", 16, false));
+        Cursor cur = db.getReadableDatabase().rawQuery(
+            "SELECT id,name FROM users ORDER BY name COLLATE NOCASE",
+            null
+        );
 
-        while (c.moveToNext()) {
-            final int id = c.getInt(0);
-            final String name = c.getString(1);
+        if (!cur.moveToFirst()) {
+            LinearLayout empty = card();
+            TextView t = text("لا يوجد مستخدمون بعد.",16,true);
+            t.setGravity(Gravity.CENTER);
+            empty.addView(t);
+            empty.addView(muted("ابدأ بإضافة أول مستخدم."));
+        } else {
+            do {
+                final int id = cur.getInt(0);
+                final String name = cur.getString(1);
 
-            LinearLayout card = new LinearLayout(this);
-            card.setOrientation(LinearLayout.VERTICAL);
-            card.setPadding(dp(14), dp(10), dp(14), dp(10));
-            card.setBackgroundColor(0xffffffff);
+                LinearLayout item = card();
+                item.addView(text("👤  " + name,19,true));
 
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-            lp.setMargins(0, dp(8), 0, dp(4));
-            root.addView(card, lp);
+                Button open = button("فتح السجل",true);
+                item.addView(open);
+                open.setOnClickListener(v -> {
+                    activeUserId = id;
+                    activeUserName = name;
+                    showProfile();
+                });
 
-            TextView n = text("👤  " + name, 19, true);
-            card.addView(n);
-
-            Button open = button("فتح صفحة " + name);
-            card.addView(open);
-            open.setOnClickListener(v -> {
-                activeUserId = id;
-                activeUserName = name;
-                showProfile();
-            });
-
-            Button del = button("حذف المستخدم وسجله");
-            card.addView(del);
-            del.setOnClickListener(v -> new AlertDialog.Builder(this)
-                .setTitle("حذف المستخدم")
-                .setMessage("سيتم حذف جميع قياسات " + name + ". هل تريد المتابعة؟")
-                .setNegativeButton("إلغاء", null)
-                .setPositiveButton("حذف", (d,w) -> {
-                    db.deleteUser(id);
-                    showUsers();
-                }).show());
+                Button del = button("حذف المستخدم وسجله",false);
+                item.addView(del);
+                del.setOnClickListener(v ->
+                    new AlertDialog.Builder(this)
+                        .setTitle("حذف المستخدم")
+                        .setMessage(
+                            "سيتم حذف جميع قياسات " + name +
+                            ". هل تريد المتابعة؟"
+                        )
+                        .setNegativeButton("إلغاء",null)
+                        .setPositiveButton("حذف",(d,w)->{
+                            db.deleteUser(id);
+                            showUsers();
+                        }).show()
+                );
+            } while (cur.moveToNext());
         }
-        c.close();
+        cur.close();
     }
 
     void addUserDialog() {
-        EditText name = edit("اكتب اسم المستخدم", 1);
+        EditText name = edit("اكتب اسم المستخدم",InputType.TYPE_CLASS_TEXT);
 
         new AlertDialog.Builder(this)
-            .setTitle("مستخدم جديد")
+            .setTitle("إضافة مستخدم جديد")
             .setView(name)
-            .setNegativeButton("إلغاء", null)
-            .setPositiveButton("حفظ", (d,w) -> {
+            .setNegativeButton("إلغاء",null)
+            .setPositiveButton("حفظ",(d,w)->{
                 String n = name.getText().toString().trim();
                 if (n.isEmpty()) {
                     toast("يرجى كتابة الاسم");
@@ -148,193 +240,261 @@ public class MainActivity extends Activity {
     void showProfile() {
         base("سجل: " + activeUserName);
 
-        Button back = button("← العودة إلى المستخدمين");
+        Button back = button("← العودة إلى المستخدمين",false);
         root.addView(back);
         back.setOnClickListener(v -> showUsers());
 
-        root.addView(text("تسجيل قياس جديد", 19, true));
-        root.addView(text("أدخل قراءتين يفصل بينهما نحو دقيقة واحدة.", 14, false));
+        LinearLayout form = card();
 
-        EditText sys1 = edit("الانقباضي SYS - القراءة الأولى", 2);
-        EditText dia1 = edit("الانبساطي DIA - القراءة الأولى", 2);
-        EditText sys2 = edit("الانقباضي SYS - القراءة الثانية", 2);
-        EditText dia2 = edit("الانبساطي DIA - القراءة الثانية", 2);
-        EditText pulse = edit("النبض (اختياري)", 2);
-        EditText note = edit("ملاحظات (اختياري)", 1);
+        form.addView(text("تسجيل قياس جديد",20,true));
+        form.addView(muted("أدخل قراءة الضغط المسجلة من جهازك."));
 
-        root.addView(sys1);
-        root.addView(dia1);
-        root.addView(sys2);
-        root.addView(dia2);
-        root.addView(pulse);
-        root.addView(note);
+        EditText sys1 = edit("الانقباضي SYS - مثال 120",
+            InputType.TYPE_CLASS_NUMBER);
+        EditText dia1 = edit("الانبساطي DIA - مثال 80",
+            InputType.TYPE_CLASS_NUMBER);
+
+        EditText sys2 = edit("الانقباضي - قراءة ثانية اختيارية",
+            InputType.TYPE_CLASS_NUMBER);
+        EditText dia2 = edit("الانبساطي - قراءة ثانية اختيارية",
+            InputType.TYPE_CLASS_NUMBER);
+
+        EditText pulse = edit("النبض (اختياري)",
+            InputType.TYPE_CLASS_NUMBER);
+        EditText note = edit("ملاحظات (اختياري)",
+            InputType.TYPE_CLASS_TEXT);
+
+        form.addView(text("القراءة الأولى",16,true));
+        form.addView(sys1);
+        space(form,7);
+        form.addView(dia1);
+
+        space(form,10);
+        form.addView(text("القراءة الثانية (اختيارية)",16,true));
+        form.addView(sys2);
+        space(form,7);
+        form.addView(dia2);
+
+        space(form,10);
+        form.addView(pulse);
+        space(form,7);
+        form.addView(note);
 
         Spinner period = new Spinner(this);
         String[] periods = {
-            "الفترة: صباحًا",
-            "الفترة: مساءً",
-            "الفترة: وقت آخر"
+            "صباحًا","مساءً","وقت آخر"
         };
         period.setAdapter(new ArrayAdapter<String>(
-            this, android.R.layout.simple_spinner_dropdown_item, periods));
-        root.addView(period);
+            this,android.R.layout.simple_spinner_dropdown_item,periods
+        ));
 
-        Button save = button("حفظ القياس");
-        root.addView(save);
+        space(form,8);
+        form.addView(text("فترة القياس",14,true));
+        form.addView(period);
 
-        TextView average = text("", 16, true);
-        root.addView(average);
+        TextView average = text("",17,true);
+        average.setTextColor(GREEN);
+        form.addView(average);
 
-        Runnable calc = () -> {
-            try {
-                double a = Double.parseDouble(sys1.getText().toString());
-                double b = Double.parseDouble(dia1.getText().toString());
-                double c = Double.parseDouble(sys2.getText().toString());
-                double d = Double.parseDouble(dia2.getText().toString());
+        TextWatcherHelper watcher = new TextWatcherHelper(
+            sys1,dia1,sys2,dia2,average
+        );
+        watcher.attach();
 
-                average.setText(String.format(Locale.US,
-                    "المتوسط: %.0f / %.0f mmHg",
-                    (a+c)/2, (b+d)/2));
-            } catch(Exception ex) {
-                average.setText("");
-            }
-        };
+        Button save = button("حفظ القياس",true);
+        form.addView(save);
 
         save.setOnClickListener(v -> {
             try {
-                int a = Integer.parseInt(sys1.getText().toString().trim());
-                int b = Integer.parseInt(dia1.getText().toString().trim());
-                int c = Integer.parseInt(sys2.getText().toString().trim());
-                int d = Integer.parseInt(dia2.getText().toString().trim());
+                String aText = sys1.getText().toString().trim();
+                String bText = dia1.getText().toString().trim();
+                String cText = sys2.getText().toString().trim();
+                String dText = dia2.getText().toString().trim();
 
-                if (a<50 || a>280 || c<50 || c>280 ||
-                    b<30 || b>180 || d<30 || d>180) {
+                if (aText.isEmpty() || bText.isEmpty()) {
+                    toast("أدخل القراءة الأولى");
+                    return;
+                }
+
+                int a = Integer.parseInt(aText);
+                int b = Integer.parseInt(bText);
+
+                Integer c = null;
+                Integer d = null;
+
+                if (!cText.isEmpty() || !dText.isEmpty()) {
+                    if (cText.isEmpty() || dText.isEmpty()) {
+                        toast("أكمل القراءة الثانية أو اتركها فارغة");
+                        return;
+                    }
+                    c = Integer.parseInt(cText);
+                    d = Integer.parseInt(dText);
+                }
+
+                if (!valid(a,b) || (c != null && !valid(c,d))) {
                     toast("تحقق من قيم الضغط المدخلة");
                     return;
                 }
 
                 Integer p = null;
-                if (!pulse.getText().toString().trim().isEmpty())
-                    p = Integer.parseInt(pulse.getText().toString().trim());
+                String pulseText = pulse.getText().toString().trim();
 
-                db.addMeasure(activeUserId, a,b,c,d,p,
+                if (!pulseText.isEmpty()) {
+                    p = Integer.parseInt(pulseText);
+                    if (p < 20 || p > 250) {
+                        toast("تحقق من قيمة النبض");
+                        return;
+                    }
+                }
+
+                db.addMeasure(
+                    activeUserId,a,b,c,d,p,
                     period.getSelectedItem().toString(),
-                    note.getText().toString().trim());
+                    note.getText().toString().trim()
+                );
 
-                toast("تم حفظ القياس");
+                toast("تم حفظ القياس بنجاح");
                 showProfile();
 
             } catch(Exception ex) {
-                toast("أدخل قراءتي الضغط بشكل صحيح");
+                toast("يرجى التأكد من إدخال الأرقام بصورة صحيحة");
             }
         });
 
-        root.addView(text("القياسات السابقة", 20, true));
+        root.addView(text("سجل القياسات",20,true));
 
-        Cursor c = db.getReadableDatabase().rawQuery(
+        Cursor cur = db.getReadableDatabase().rawQuery(
             "SELECT id,created,sys1,dia1,sys2,dia2,pulse,period,note " +
-            "FROM measures WHERE user_id=? ORDER BY id DESC",
-            new String[]{String.valueOf(activeUserId)});
+            "FROM readings WHERE user_id=? ORDER BY id DESC",
+            new String[]{String.valueOf(activeUserId)}
+        );
 
-        if (c.getCount() == 0)
-            root.addView(text("لا توجد قياسات مسجلة لهذا المستخدم.", 15, false));
+        if (!cur.moveToFirst()) {
+            LinearLayout empty = card();
+            TextView t = text("لا توجد قياسات مسجلة بعد.",15,true);
+            t.setGravity(Gravity.CENTER);
+            empty.addView(t);
+        } else {
+            do {
+                final int id = cur.getInt(0);
+                String date = cur.getString(1);
+                int s1 = cur.getInt(2);
+                int d1 = cur.getInt(3);
 
-        while (c.moveToNext()) {
-            int id = c.getInt(0);
-            String date = c.getString(1);
-            int s1 = c.getInt(2);
-            int d1 = c.getInt(3);
-            int s2 = c.getInt(4);
-            int d2 = c.getInt(5);
-            String p = c.isNull(6) ? "غير مسجل" : String.valueOf(c.getInt(6));
-            String per = c.getString(7);
-            String nt = c.getString(8);
+                Integer s2 = cur.isNull(4) ? null : cur.getInt(4);
+                Integer d2 = cur.isNull(5) ? null : cur.getInt(5);
 
-            LinearLayout item = new LinearLayout(this);
-            item.setOrientation(LinearLayout.VERTICAL);
-            item.setPadding(dp(12),dp(8),dp(12),dp(8));
-            item.setBackgroundColor(0xffffffff);
+                String p = cur.isNull(6) ?
+                    "غير مسجل" : String.valueOf(cur.getInt(6));
 
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1,-2);
-            lp.setMargins(0,dp(7),0,0);
-            root.addView(item,lp);
+                String per = cur.getString(7);
+                String nt = cur.getString(8);
 
-            item.addView(text(date + "  •  " + per,13,true));
-            item.addView(text("الأولى: " + s1 + "/" + d1 +
-                "   |   الثانية: " + s2 + "/" + d2,15,false));
+                LinearLayout item = card();
 
-            item.addView(text(String.format(Locale.US,
-                "المتوسط: %.0f / %.0f mmHg",
-                (s1+s2)/2.0, (d1+d2)/2.0),17,true));
+                item.addView(text(date + "  •  " + per,14,true));
 
-            item.addView(text("النبض: " + p +
-                (nt.isEmpty() ? "" : "   •   " + nt),13,false));
+                String reading = s1 + "/" + d1;
+                if (s2 != null) reading += "  |  " + s2 + "/" + d2;
 
-            Button edit = button("✏️ تعديل هذا القياس");
-            item.addView(edit);
-            edit.setOnClickListener(v ->
-                editMeasureDialog(id,s1,d1,s2,d2,p,per,nt));
+                TextView values = text(reading + " mmHg",23,true);
+                values.setTextColor(GREEN);
+                item.addView(values);
 
-            Button delete = button("حذف هذا القياس");
-            item.addView(delete);
-            delete.setOnClickListener(v ->
-                new AlertDialog.Builder(this)
-                    .setMessage("حذف هذا القياس؟")
-                    .setNegativeButton("إلغاء",null)
-                    .setPositiveButton("حذف",(dd,w)->{
-                        db.deleteMeasure(id);
-                        showProfile();
-                    }).show());
+                if (s2 != null) {
+                    item.addView(muted(
+                        "متوسط القراءتين: " +
+                        Math.round((s1+s2)/2.0) + " / " +
+                        Math.round((d1+d2)/2.0)
+                    ));
+                }
+
+                item.addView(muted("النبض: " + p));
+
+                if (nt != null && !nt.isEmpty())
+                    item.addView(muted("ملاحظة: " + nt));
+
+                Button edit = button("✏️ تعديل القياس",false);
+                item.addView(edit);
+                edit.setOnClickListener(v ->
+                    editMeasureDialog(id,s1,d1,s2,d2,p,per,nt)
+                );
+
+                Button delete = button("حذف القياس",false);
+                item.addView(delete);
+                delete.setOnClickListener(v ->
+                    new AlertDialog.Builder(this)
+                        .setMessage("هل تريد حذف هذا القياس؟")
+                        .setNegativeButton("إلغاء",null)
+                        .setPositiveButton("حذف",(dd,w)->{
+                            db.deleteMeasure(id);
+                            showProfile();
+                        }).show()
+                );
+
+            } while(cur.moveToNext());
         }
-        c.close();
+        cur.close();
+
+        LinearLayout reminder = card();
+        reminder.addView(text("تذكير للقياس الصحيح",17,true));
+        reminder.addView(muted(
+            "• استرح بهدوء 5 دقائق قبل القياس.\n" +
+            "• اجلس وظهرك مسنود وقدماك على الأرض.\n" +
+            "• ضع السوار على الذراع بمستوى القلب.\n" +
+            "• تجنب القهوة والتدخين والرياضة خلال 30 دقيقة قبل القياس."
+        ));
     }
 
-    void editMeasureDialog(int id, int s1, int d1, int s2, int d2,
-                           String pulseValue, String per, String noteValue) {
+    boolean valid(int s,int d) {
+        return s >= 50 && s <= 280 &&
+               d >= 30 && d <= 180 && s > d;
+    }
 
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(dp(18),dp(8),dp(18),dp(8));
+    void editMeasureDialog(int id,int s1,int d1,
+                           Integer s2,Integer d2,String pulseValue,
+                           String per,String noteValue) {
 
-        EditText e1 = edit("الانقباضي - القراءة الأولى",2);
-        EditText e2 = edit("الانبساطي - القراءة الأولى",2);
-        EditText e3 = edit("الانقباضي - القراءة الثانية",2);
-        EditText e4 = edit("الانبساطي - القراءة الثانية",2);
-        EditText ep = edit("النبض (اختياري)",2);
-        EditText en = edit("ملاحظات",1);
+        LinearLayout layout = column();
+        layout.setPadding(dp(15),dp(8),dp(15),dp(8));
+
+        EditText e1 = edit("الانقباضي SYS",InputType.TYPE_CLASS_NUMBER);
+        EditText e2 = edit("الانبساطي DIA",InputType.TYPE_CLASS_NUMBER);
+        EditText e3 = edit("الانقباضي - القراءة الثانية اختيارية",
+            InputType.TYPE_CLASS_NUMBER);
+        EditText e4 = edit("الانبساطي - القراءة الثانية اختيارية",
+            InputType.TYPE_CLASS_NUMBER);
+        EditText ep = edit("النبض (اختياري)",InputType.TYPE_CLASS_NUMBER);
+        EditText en = edit("ملاحظات",InputType.TYPE_CLASS_TEXT);
 
         e1.setText(String.valueOf(s1));
         e2.setText(String.valueOf(d1));
-        e3.setText(String.valueOf(s2));
-        e4.setText(String.valueOf(d2));
 
-        if (!pulseValue.equals("غير مسجل"))
-            ep.setText(pulseValue);
-
+        if (s2 != null) e3.setText(String.valueOf(s2));
+        if (d2 != null) e4.setText(String.valueOf(d2));
+        if (!pulseValue.equals("غير مسجل")) ep.setText(pulseValue);
         en.setText(noteValue);
 
+        layout.addView(text("القراءة الأولى",15,true));
         layout.addView(e1);
         layout.addView(e2);
+        space(layout,8);
+        layout.addView(text("القراءة الثانية الاختيارية",15,true));
         layout.addView(e3);
         layout.addView(e4);
+        space(layout,8);
         layout.addView(ep);
         layout.addView(en);
 
         Spinner sp = new Spinner(this);
-        String[] periods = {
-            "الفترة: صباحًا",
-            "الفترة: مساءً",
-            "الفترة: وقت آخر"
-        };
-
+        String[] periods = {"صباحًا","مساءً","وقت آخر"};
         sp.setAdapter(new ArrayAdapter<String>(
-            this, android.R.layout.simple_spinner_dropdown_item, periods));
+            this,android.R.layout.simple_spinner_dropdown_item,periods
+        ));
 
-        int selected = 0;
-        for (int i=0; i<periods.length; i++) {
-            if (periods[i].equals(per)) selected = i;
+        for (int i=0;i<periods.length;i++) {
+            if (periods[i].equals(per)) sp.setSelection(i);
         }
-        sp.setSelection(selected);
         layout.addView(sp);
 
         ScrollView scroll = new ScrollView(this);
@@ -348,33 +508,49 @@ public class MainActivity extends Activity {
                 try {
                     int a = Integer.parseInt(e1.getText().toString().trim());
                     int b = Integer.parseInt(e2.getText().toString().trim());
-                    int c = Integer.parseInt(e3.getText().toString().trim());
-                    int d = Integer.parseInt(e4.getText().toString().trim());
 
-                    if (a<50 || a>280 || c<50 || c>280 ||
-                        b<30 || b>180 || d<30 || d>180) {
-                        toast("تحقق من قيم الضغط المدخلة");
+                    String cText = e3.getText().toString().trim();
+                    String dText = e4.getText().toString().trim();
+
+                    Integer c = null;
+                    Integer d = null;
+
+                    if (!cText.isEmpty() || !dText.isEmpty()) {
+                        if (cText.isEmpty() || dText.isEmpty()) {
+                            toast("أكمل القراءة الثانية أو اتركها فارغة");
+                            return;
+                        }
+                        c = Integer.parseInt(cText);
+                        d = Integer.parseInt(dText);
+                    }
+
+                    if (!valid(a,b) || (c != null && !valid(c,d))) {
+                        toast("تحقق من قيم الضغط");
                         return;
                     }
 
-                    Integer pulse = null;
-                    if (!ep.getText().toString().trim().isEmpty()) {
-                        pulse = Integer.parseInt(ep.getText().toString().trim());
-                        if (pulse<20 || pulse>250) {
+                    Integer p = null;
+                    String pv = ep.getText().toString().trim();
+
+                    if (!pv.isEmpty()) {
+                        p = Integer.parseInt(pv);
+                        if (p < 20 || p > 250) {
                             toast("تحقق من قيمة النبض");
                             return;
                         }
                     }
 
-                    db.updateMeasure(id,a,b,c,d,pulse,
+                    db.updateMeasure(
+                        id,a,b,c,d,p,
                         sp.getSelectedItem().toString(),
-                        en.getText().toString().trim());
+                        en.getText().toString().trim()
+                    );
 
-                    toast("تم تعديل القياس بنجاح");
+                    toast("تم تعديل القياس");
                     showProfile();
 
                 } catch(Exception ex) {
-                    toast("يرجى التأكد من إدخال القيم بشكل صحيح");
+                    toast("يرجى التأكد من صحة الأرقام");
                 }
             }).show();
     }
@@ -383,74 +559,167 @@ public class MainActivity extends Activity {
         Toast.makeText(this,s,Toast.LENGTH_SHORT).show();
     }
 
+    class TextWatcherHelper {
+        EditText a,b,c,d;
+        TextView result;
+
+        TextWatcherHelper(EditText a,EditText b,EditText c,
+                          EditText d,TextView result) {
+            this.a=a;
+            this.b=b;
+            this.c=c;
+            this.d=d;
+            this.result=result;
+        }
+
+        void attach() {
+            android.text.TextWatcher w =
+                new android.text.TextWatcher() {
+                    public void beforeTextChanged(
+                        CharSequence s,int start,int count,int after) {}
+                    public void onTextChanged(
+                        CharSequence s,int start,int before,int count) {
+                        calculate();
+                    }
+                    public void afterTextChanged(
+                        android.text.Editable e) {}
+                };
+
+            a.addTextChangedListener(w);
+            b.addTextChangedListener(w);
+            c.addTextChangedListener(w);
+            d.addTextChangedListener(w);
+        }
+
+        void calculate() {
+            try {
+                String av=a.getText().toString().trim();
+                String bv=b.getText().toString().trim();
+                String cv=c.getText().toString().trim();
+                String dv=d.getText().toString().trim();
+
+                if (av.isEmpty() || bv.isEmpty() ||
+                    cv.isEmpty() || dv.isEmpty()) {
+                    result.setText("");
+                    return;
+                }
+
+                int x=Integer.parseInt(av);
+                int y=Integer.parseInt(bv);
+                int z=Integer.parseInt(cv);
+                int q=Integer.parseInt(dv);
+
+                if (!valid(x,y) || !valid(z,q)) {
+                    result.setText("");
+                    return;
+                }
+
+                result.setText(
+                    "متوسط القراءتين: " +
+                    Math.round((x+z)/2.0) + " / " +
+                    Math.round((y+q)/2.0) + " mmHg"
+                );
+
+            } catch(Exception ex) {
+                result.setText("");
+            }
+        }
+    }
+
     class DB extends SQLiteOpenHelper {
+
         DB(Context c) {
-            super(c,"pressure_diary.db",null,1);
+            super(c,"pressure_diary_v2.db",null,1);
         }
 
         public void onCreate(SQLiteDatabase d) {
-            d.execSQL("CREATE TABLE users(" +
+            d.execSQL(
+                "CREATE TABLE users(" +
                 "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                "name TEXT NOT NULL)");
+                "name TEXT NOT NULL)"
+            );
 
-            d.execSQL("CREATE TABLE measures(" +
+            d.execSQL(
+                "CREATE TABLE readings(" +
                 "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                "user_id INTEGER NOT NULL,created TEXT," +
-                "sys1 INTEGER,dia1 INTEGER,sys2 INTEGER,dia2 INTEGER," +
-                "pulse INTEGER,period TEXT,note TEXT," +
-                "FOREIGN KEY(user_id) REFERENCES users(id))");
+                "user_id INTEGER NOT NULL," +
+                "created TEXT NOT NULL," +
+                "sys1 INTEGER NOT NULL," +
+                "dia1 INTEGER NOT NULL," +
+                "sys2 INTEGER," +
+                "dia2 INTEGER," +
+                "pulse INTEGER," +
+                "period TEXT," +
+                "note TEXT," +
+                "FOREIGN KEY(user_id) REFERENCES users(id))"
+            );
         }
 
         public void onUpgrade(SQLiteDatabase d,int oldV,int newV) {}
 
-        void addUser(String n) {
+        void addUser(String name) {
             ContentValues v = new ContentValues();
-            v.put("name",n);
+            v.put("name",name);
             getWritableDatabase().insert("users",null,v);
         }
 
         void deleteUser(int id) {
             SQLiteDatabase d = getWritableDatabase();
-            d.delete("measures","user_id=?",new String[]{""+id});
-            d.delete("users","id=?",new String[]{""+id});
+            d.delete("readings","user_id=?",
+                new String[]{String.valueOf(id)});
+            d.delete("users","id=?",
+                new String[]{String.valueOf(id)});
         }
 
         void deleteMeasure(int id) {
-            getWritableDatabase().delete("measures",
-                "id=?",new String[]{""+id});
+            getWritableDatabase().delete("readings",
+                "id=?",new String[]{String.valueOf(id)});
         }
 
-        void addMeasure(int uid,int s1,int d1,int s2,int d2,
-                        Integer p,String per,String note) {
+        void addMeasure(int uid,int s1,int d1,Integer s2,
+                        Integer d2,Integer pulse,String period,
+                        String note) {
+
             ContentValues v = new ContentValues();
             v.put("user_id",uid);
             v.put("created",new SimpleDateFormat(
-                "yyyy-MM-dd HH:mm",Locale.getDefault()).format(new Date()));
+                "yyyy-MM-dd HH:mm",Locale.getDefault()
+            ).format(new Date()));
+
             v.put("sys1",s1);
             v.put("dia1",d1);
-            v.put("sys2",s2);
-            v.put("dia2",d2);
-            if (p!=null) v.put("pulse",p);
-            v.put("period",per);
+
+            if (s2 != null) v.put("sys2",s2);
+            if (d2 != null) v.put("dia2",d2);
+            if (pulse != null) v.put("pulse",pulse);
+
+            v.put("period",period);
             v.put("note",note);
-            getWritableDatabase().insert("measures",null,v);
+
+            getWritableDatabase().insert("readings",null,v);
         }
 
-        void updateMeasure(int id,int s1,int d1,int s2,int d2,
-                           Integer p,String per,String note) {
+        void updateMeasure(int id,int s1,int d1,Integer s2,
+                           Integer d2,Integer pulse,String period,
+                           String note) {
+
             ContentValues v = new ContentValues();
             v.put("sys1",s1);
             v.put("dia1",d1);
-            v.put("sys2",s2);
-            v.put("dia2",d2);
 
-            if (p==null) v.putNull("pulse");
-            else v.put("pulse",p);
+            if (s2 == null) v.putNull("sys2");
+            else v.put("sys2",s2);
 
-            v.put("period",per);
+            if (d2 == null) v.putNull("dia2");
+            else v.put("dia2",d2);
+
+            if (pulse == null) v.putNull("pulse");
+            else v.put("pulse",pulse);
+
+            v.put("period",period);
             v.put("note",note);
 
-            getWritableDatabase().update("measures",v,
+            getWritableDatabase().update("readings",v,
                 "id=?",new String[]{String.valueOf(id)});
         }
     }
