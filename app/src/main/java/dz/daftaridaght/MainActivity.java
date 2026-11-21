@@ -243,25 +243,103 @@ public class MainActivity extends Activity {
     }
 
     // يحاول أولاً ربط الأرقام بعناوين SYS و DIA و PUL، ثم يستخدم ترتيب الشاشة عند غياب العناوين.
-    int[] parseOcrValues(Text result) {
-        int sys=0,dia=0,pulse=0;ArrayList<Integer> nums=new ArrayList<>();
-        for(Text.TextBlock block:result.getTextBlocks())for(Text.Line line:block.getLines()){
-            String raw=normalizeDigits(line.getText()).toUpperCase(Locale.ROOT);
-            Matcher m=Pattern.compile("(?<![A-Z])(?:SYS|SYSTOLIC|DIA|DIASTOLIC|PUL|PULSE|PR)(?![A-Z])[^0-9]{0,8}([0-9]{2,3})").matcher(raw);
-            if(m.find()){
-                int val=parseInt(m.group(1));
-                if(raw.contains("SYS")||raw.contains("SYSTOLIC"))sys=val;
-                else if(raw.contains("DIA")||raw.contains("DIASTOLIC"))dia=val;
-                else pulse=val;
+    
+    
+int[] parseOcrValues(Text result) {
+    int sys = 0, dia = 0, pulse = 0;
+
+    // كل عنصر: موضع Y، ترتيب الظهور، القيمة، نوع العنوان
+    // 1 = SYS، 2 = DIA، 3 = PULSE، 0 = رقم دون عنوان
+    ArrayList<int[]> numbers = new ArrayList<>();
+    int order = 0;
+
+    Pattern numberPattern = Pattern.compile("[0-9]{2,3}");
+
+    for (Text.TextBlock block : result.getTextBlocks()) {
+        for (Text.Line line : block.getLines()) {
+            String raw = normalizeDigits(line.getText())
+                    .toUpperCase(Locale.ROOT);
+
+            android.graphics.Rect bounds = line.getBoundingBox();
+            int y = bounds == null ? order * 1000 :
+                    (bounds.top + bounds.bottom) / 2;
+
+            int label = 0;
+
+            if (raw.matches("(?s).*\\bSYS\\b.*") ||
+                raw.contains("SYSTOLIC")) {
+                label = 1;
+            } else if (raw.matches("(?s).*\\bDIA\\b.*") ||
+                       raw.contains("DIASTOLIC")) {
+                label = 2;
+            } else if (raw.matches("(?s).*\\bPUL\\b.*") ||
+                       raw.contains("PULSE") ||
+                       raw.matches("(?s).*\\bPR\\b.*")) {
+                label = 3;
             }
-            Matcher all=Pattern.compile("[0-9]{2,3}").matcher(raw);while(all.find())nums.add(parseInt(all.group()));
+
+            Matcher matcher = numberPattern.matcher(raw);
+
+            while (matcher.find()) {
+                int value = parseInt(matcher.group());
+
+                if (value >= 20 && value <= 280) {
+                    numbers.add(new int[]{
+                        y, order++, value, label
+                    });
+                }
+            }
         }
-        if(sys==0&&nums.size()>0)sys=nums.get(0);
-        if(dia==0&&nums.size()>1)dia=nums.get(1);
-        if(pulse==0&&nums.size()>2)pulse=nums.get(2);
-        if(sys<50||sys>280)sys=0;if(dia<30||dia>180)dia=0;if(pulse<20||pulse>250)pulse=0;
-        return new int[]{sys,dia,pulse};
     }
+
+    // ترتيب الأرقام حسب ارتفاعها في الصورة
+    Collections.sort(numbers, (a, b) -> {
+        if (a[0] != b[0]) return Integer.compare(a[0], b[0]);
+        return Integer.compare(a[1], b[1]);
+    });
+
+    // استخراج القيم التي تحمل عناوين واضحة
+    for (int[] item : numbers) {
+        int value = item[2];
+
+        if (item[3] == 1 && value >= 50 && value <= 280)
+            sys = value;
+
+        if (item[3] == 2 && value >= 30 && value <= 180)
+            dia = value;
+
+        if (item[3] == 3 && value >= 20 && value <= 250)
+            pulse = value;
+    }
+
+    // عند غياب العناوين نعتمد ترتيب الشاشة:
+    // الأعلى SYS، الوسط DIA، الأسفل PULSE
+    int lastValue = -1;
+
+    for (int[] item : numbers) {
+        int value = item[2];
+
+        if (value == lastValue) continue;
+        lastValue = value;
+
+        if (item[3] != 0) continue;
+
+        if (sys == 0 && value >= 50 && value <= 280) {
+            sys = value;
+        } else if (dia == 0 && value >= 30 && value <= 180) {
+            dia = value;
+        } else if (pulse == 0 && value >= 20 && value <= 250) {
+            pulse = value;
+        }
+    }
+
+    if (sys < 50 || sys > 280) sys = 0;
+    if (dia < 30 || dia > 180) dia = 0;
+    if (pulse < 20 || pulse > 250) pulse = 0;
+
+    return new int[]{sys, dia, pulse};
+}
+
     int parseInt(String s){try{return Integer.parseInt(s);}catch(Exception e){return 0;}}
     String normalizeDigits(String s){return s.replace('٠','0').replace('١','1').replace('٢','2').replace('٣','3').replace('٤','4').replace('٥','5').replace('٦','6').replace('٧','7').replace('٨','8').replace('٩','9').replace('۰','0').replace('۱','1').replace('۲','2').replace('۳','3').replace('۴','4').replace('۵','5').replace('۶','6').replace('۷','7').replace('۸','8').replace('۹','9');}
 
